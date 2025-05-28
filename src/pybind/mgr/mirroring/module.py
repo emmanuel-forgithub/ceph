@@ -1,4 +1,5 @@
-from typing import List, Optional
+from typing import Optional, List
+import json
 
 from mgr_module import MgrModule, CLIReadCommand, CLIWriteCommand, Option, NotifyType
 
@@ -73,9 +74,21 @@ class Module(MgrModule):
     @CLIWriteCommand('fs snapshot mirror add')
     def snapshot_mirror_add_dir(self,
                                 fs_name: str,
-                                path: str):
-        """Add a directory for snapshot mirroring"""
-        return self.fs_snapshot_mirror.add_dir(fs_name, path)
+                                path: str,
+                                peers: Optional[str] = None):
+        """Add snapshot dir"""
+        parsed_peers_set = None
+        if peers is not None:
+            try:
+                temp_list = json.loads(peers)
+                if not isinstance(temp_list, list):
+                    raise ValueError("Peers argument must be a JSON array (list).")
+                parsed_peers_set = set(temp_list)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON format for --peers: {e}. Example: '[\"uuid1\", \"uuid2\"]'")
+            except ValueError as e:
+                raise e
+        return self.fs_snapshot_mirror.add_dir(fs_name, path, parsed_peers_set)
 
     @CLIWriteCommand('fs snapshot mirror remove')
     def snapshot_mirror_remove_dir(self,

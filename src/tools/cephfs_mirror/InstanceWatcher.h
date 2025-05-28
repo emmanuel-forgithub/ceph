@@ -26,7 +26,7 @@ public:
     virtual ~Listener() {
     }
 
-    virtual void acquire_directory(std::string_view dir_path) = 0;
+    virtual void acquire_directory(std::string_view dir_path, const std::optional<std::set<std::string>>& target_peers_uuids_opt) = 0;
     virtual void release_directory(std::string_view dir_path) = 0;
   };
 

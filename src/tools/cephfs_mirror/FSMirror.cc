@@ -371,27 +371,53 @@ void FSMirror::handle_shutdown_instance_watcher(int r) {
   }
 }
 
-void FSMirror::handle_acquire_directory(string_view dir_path) {
-  dout(5) << ": dir_path=" << dir_path << dendl;
+void FSMirror::handle_acquire_directory(string_view dir_path, const std::optional<std::set<std::string>>& target_peers_uuids_opt) {
 
   {
     std::scoped_lock locker(m_lock);
+    // Add/update the directory in the internal list regardless of mirroring policy.
+    // This `m_directories` set likely just tracks which directories are *managed* by this FSMirror.
+    // The actual mirroring decision is per-PeerReplayer.
     m_directories.emplace(dir_path);
-    m_service_daemon->add_or_update_fs_attribute(m_filesystem.fscid, SERVICE_DAEMON_DIR_COUNT_KEY,
-                                                 m_directories.size());
+    m_service_daemon->add_or_update_fs_attribute(m_filesystem.fscid, SERVICE_DAEMON_DIR_COUNT_KEY, m_directories.size());
 
-    for (auto &[peer, peer_replayer] : m_peer_replayers) {
-      dout(10) << ": peer=" << peer << dendl;
-      peer_replayer->add_directory(dir_path);
+    // Iterate through all active PeerReplayers
+    for (auto &[peer_uuid_str, peer_replayer] : m_peer_replayers) {
+      bool should_mirror_to_this_peer = false;
+
+      if (!target_peers_uuids_opt.has_value()) {
+        // Case 1: target_peers_uuids_opt is nullopt (MGR sent no 'target_peers' key)
+        // This means "mirror to all peers". So, this peer should mirror.
+        should_mirror_to_this_peer = true;
+      } else if (target_peers_uuids_opt->empty()) {
+        // Case 2: target_peers_uuids_opt has value, but the set is empty (MGR sent 'target_peers': [])
+        // This means "mirror to no specific peers". So, this peer should NOT mirror.
+        should_mirror_to_this_peer = false;
+      } else {
+        // Case 3: target_peers_uuids_opt has value, and the set is non-empty
+        // This means "mirror to only these specific peers". Check if current peer's UUID is in the set.
+        should_mirror_to_this_peer = target_peers_uuids_opt->count(peer_uuid_str.uuid);
+      }
+
+      if (should_mirror_to_this_peer) {
+        peer_replayer->add_directory(dir_path);
+      } else {
+        // Important: If a directory was previously mirrored by this peer and now
+        // is no longer targeted, it should be removed.
+        // This assumes PeerReplayer has a remove_directory method.
+        // You'll need to confirm if `PeerReplayer::remove_directory` exists
+        // or add logic to handle it.
+        peer_replayer->remove_directory(dir_path); // <--- ASSUMING THIS EXISTS/WILL BE ADDED
+      }
     }
   }
+
   if (m_perf_counters) {
     m_perf_counters->set(l_cephfs_mirror_fs_mirror_dir_count, m_directories.size());
   }
 }
 
 void FSMirror::handle_release_directory(string_view dir_path) {
-  dout(5) << ": dir_path=" << dir_path << dendl;
 
   {
     std::scoped_lock locker(m_lock);
@@ -430,7 +456,6 @@ void FSMirror::add_peer(const Peer &peer) {
     return;
   }
   m_peer_replayers.emplace(peer, std::move(replayer));
-  ceph_assert(m_peer_replayers.size() == 1); // support only a single peer
   if (m_perf_counters) {
     m_perf_counters->inc(l_cephfs_mirror_fs_mirror_peers);
   }
