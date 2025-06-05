@@ -12,7 +12,7 @@ from ..exception import MirrorException
 log = logging.getLogger(__name__)
 
 class DirectoryState:
-    def __init__(self, instance_id=None, mapped_time=None):
+    def __init__(self, instance_id=None, mapped_time=None, peer=None):
         self.instance_id = instance_id
         self.mapped_time = mapped_time
         self.state = State.UNASSOCIATED
@@ -20,11 +20,12 @@ class DirectoryState:
         self.transition = Transition(ActionType.NONE)
         self.next_state = None
         self.purging = False
+        self.peer = peer
 
     def __str__(self):
         return f'[instance_id={self.instance_id}, mapped_time={self.mapped_time},'\
             f' state={self.state}, transition={self.transition}, next_state={self.next_state},'\
-            f' purging={self.purging}]'
+            f' purging={self.purging}, peer={self.peer}]'
 
 class Policy:
     # number of seconds after which a directory can be reshuffled
@@ -102,7 +103,8 @@ class Policy:
             if dir_state:
                 return {'instance_id': dir_state.instance_id,
                         'mapped_time': dir_state.mapped_time,
-                        'purging': dir_state.purging}
+                        'purging': dir_state.purging,
+                        'peer': dir_state.peer}
             return None
 
     def map(self, dir_path, dir_state):

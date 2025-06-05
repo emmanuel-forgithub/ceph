@@ -371,7 +371,7 @@ void FSMirror::handle_shutdown_instance_watcher(int r) {
   }
 }
 
-void FSMirror::handle_acquire_directory(string_view dir_path) {
+void FSMirror::handle_acquire_directory(string_view dir_path, string_view peer_uuids) {
   dout(5) << ": dir_path=" << dir_path << dendl;
 
   {
@@ -382,7 +382,9 @@ void FSMirror::handle_acquire_directory(string_view dir_path) {
 
     for (auto &[peer, peer_replayer] : m_peer_replayers) {
       dout(10) << ": peer=" << peer << dendl;
-      peer_replayer->add_directory(dir_path);
+      if (peer.uuid == peer_uuids) {
+        peer_replayer->add_directory(dir_path);
+      }
     }
   }
   if (m_perf_counters) {
@@ -430,7 +432,6 @@ void FSMirror::add_peer(const Peer &peer) {
     return;
   }
   m_peer_replayers.emplace(peer, std::move(replayer));
-  ceph_assert(m_peer_replayers.size() == 1); // support only a single peer
   if (m_perf_counters) {
     m_perf_counters->inc(l_cephfs_mirror_fs_mirror_peers);
   }
